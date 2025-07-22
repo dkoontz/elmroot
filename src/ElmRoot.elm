@@ -1,10 +1,10 @@
-port module Server exposing (HttpServer, createRoute, createServer, emptyRequestBody, emptyResponseBody, jsonRequestBody, jsonResponseBody)
+port module ElmRoot exposing (HttpServer, createRoute, createServer, emptyRequestBody, emptyResponseBody, jsonRequestBody, jsonResponseBody)
 
-import Http
+import ElmRoot.Http
+import ElmRoot.Types
 import Json.Decode as Decode
 import Json.Encode as Encode
 import Platform
-import Types
 import Url
 import Url.Parser
 
@@ -13,7 +13,7 @@ import Url.Parser
 -- Exposed Server functionality
 
 
-createServer : Types.Application -> HttpServer
+createServer : ElmRoot.Types.Application -> HttpServer
 createServer application =
     Platform.worker
         { init = init application
@@ -26,7 +26,7 @@ type alias HttpServer =
     Program () Model Msg
 
 
-createRoute : Types.RouteConfig route requestBody responseBody -> Types.RouteHandler
+createRoute : ElmRoot.Types.RouteConfig route requestBody responseBody -> ElmRoot.Types.RouteHandler
 createRoute config =
     let
         processRequest { id, route, requestBody, headers, handler, responseEncoder } =
@@ -48,7 +48,7 @@ createRoute config =
                     responseEncoder response.body
 
                 -- Create new response with encoded body
-                encodedResponse : Types.Response String
+                encodedResponse : ElmRoot.Types.Response String
                 encodedResponse =
                     { id = response.id
                     , status = response.status
@@ -58,7 +58,7 @@ createRoute config =
             in
             encodedResponse
     in
-    Types.RouteHandler
+    ElmRoot.Types.RouteHandler
         { method = config.method
         , matcher =
             \nodeRequest ->
@@ -121,15 +121,15 @@ jsonResponseBody encoder =
 
 
 type alias Model =
-    { application : Types.Application }
+    { application : ElmRoot.Types.Application }
 
 
 type Msg
-    = OnRequest Types.NodeHttpRequest
-    | OnInvalidHttpFormat Types.RequestId String
+    = OnRequest ElmRoot.Types.NodeHttpRequest
+    | OnInvalidHttpFormat ElmRoot.Types.RequestId String
 
 
-init : Types.Application -> flags -> ( Model, Cmd Msg )
+init : ElmRoot.Types.Application -> flags -> ( Model, Cmd Msg )
 init application _ =
     ( { application = application }, Cmd.none )
 
@@ -160,7 +160,7 @@ update msg model =
             ( model
             , Cmd.batch
                 [ notFoundResponse requestId |> httpResponseEncode |> sendResponse
-                , logging ("HttpRequest from Node was invalid: " ++ errorMessage ++ " (RequestId: " ++ Types.requestIdToString requestId ++ ")")
+                , logging ("HttpRequest from Node was invalid: " ++ errorMessage ++ " (RequestId: " ++ ElmRoot.Types.requestIdToString requestId ++ ")")
                 ]
             )
 
@@ -176,10 +176,10 @@ subscriptions model =
                 Err error ->
                     case Decode.decodeValue (Decode.field "id" Decode.string) value of
                         Ok stringId ->
-                            OnInvalidHttpFormat (Types.requestIdFromString stringId) (Decode.errorToString error)
+                            OnInvalidHttpFormat (ElmRoot.Types.requestIdFromString stringId) (Decode.errorToString error)
 
                         Err _ ->
-                            OnInvalidHttpFormat (Types.requestIdFromString "unknown") (Decode.errorToString error)
+                            OnInvalidHttpFormat (ElmRoot.Types.requestIdFromString "unknown") (Decode.errorToString error)
         )
 
 
@@ -197,10 +197,10 @@ port logging : String -> Cmd msg
 
 
 type alias NodeHttpResponse =
-    { id : Types.RequestId
+    { id : ElmRoot.Types.RequestId
     , status : Int
     , body : String
-    , headers : List Http.ResponseHeader
+    , headers : List ElmRoot.Http.ResponseHeader
     }
 
 
@@ -208,7 +208,7 @@ type alias NodeHttpResponse =
 -- RUNNER UTILITIES
 
 
-createResponse : Types.RequestId -> Int -> List Http.ResponseHeader -> responseBody -> Types.Response responseBody
+createResponse : ElmRoot.Types.RequestId -> Int -> List ElmRoot.Http.ResponseHeader -> responseBody -> ElmRoot.Types.Response responseBody
 createResponse requestId status headers body =
     { id = requestId
     , status = status
@@ -217,7 +217,7 @@ createResponse requestId status headers body =
     }
 
 
-responseToHttp : Types.Response String -> NodeHttpResponse
+responseToHttp : ElmRoot.Types.Response String -> NodeHttpResponse
 responseToHttp response =
     { id = response.id
     , status = response.status
@@ -226,7 +226,7 @@ responseToHttp response =
     }
 
 
-badRequestResponse : Types.RequestId -> String -> Types.Response String
+badRequestResponse : ElmRoot.Types.RequestId -> String -> ElmRoot.Types.Response String
 badRequestResponse requestId errorMessage =
     { id = requestId
     , status = 400
@@ -235,7 +235,7 @@ badRequestResponse requestId errorMessage =
     }
 
 
-executeRoutes : Types.NodeHttpRequest -> List Types.RouteHandler -> Types.Response String
+executeRoutes : ElmRoot.Types.NodeHttpRequest -> List ElmRoot.Types.RouteHandler -> ElmRoot.Types.Response String
 executeRoutes request routes =
     case tryRoutes request routes of
         Just response ->
@@ -245,14 +245,14 @@ executeRoutes request routes =
             notFoundResponse request.id
 
 
-tryRoutes : Types.NodeHttpRequest -> List Types.RouteHandler -> Maybe (Types.Response String)
+tryRoutes : ElmRoot.Types.NodeHttpRequest -> List ElmRoot.Types.RouteHandler -> Maybe (ElmRoot.Types.Response String)
 tryRoutes request routes =
     case routes of
         [] ->
             Nothing
 
-        (Types.RouteHandler config) :: remaining ->
-            if request.method == Debug.log "route method" config.method then
+        (ElmRoot.Types.RouteHandler config) :: remaining ->
+            if request.method == config.method then
                 case config.matcher request of
                     Just (Ok response) ->
                         Just response
@@ -261,13 +261,13 @@ tryRoutes request routes =
                         Just (badRequestResponse request.id error)
 
                     Nothing ->
-                        tryRoutes (Debug.log "didn't match route" request) remaining
+                        tryRoutes request remaining
 
             else
                 tryRoutes request remaining
 
 
-notFoundResponse : Types.RequestId -> Types.Response String
+notFoundResponse : ElmRoot.Types.RequestId -> ElmRoot.Types.Response String
 notFoundResponse requestId =
     { id = requestId
     , status = 404
@@ -279,30 +279,30 @@ notFoundResponse requestId =
 httpResponseEncode : NodeHttpResponse -> Encode.Value
 httpResponseEncode response =
     Encode.object
-        [ ( "id", Encode.string (Types.requestIdToString response.id) )
+        [ ( "id", Encode.string (ElmRoot.Types.requestIdToString response.id) )
         , ( "status", Encode.int response.status )
         , ( "body", Encode.string response.body )
-        , ( "headers", Encode.list Http.encodeResponseHeader response.headers )
+        , ( "headers", Encode.list ElmRoot.Http.encodeResponseHeader response.headers )
         ]
 
 
-httpRequestDecode : Types.RequestId -> Decode.Decoder Types.NodeHttpRequest
+httpRequestDecode : ElmRoot.Types.RequestId -> Decode.Decoder ElmRoot.Types.NodeHttpRequest
 httpRequestDecode requestId =
-    Decode.map4 (\method url body headers -> Types.NodeHttpRequest requestId method url body headers)
-        (Decode.field "method" Http.httpMethodDecoder)
+    Decode.map4 (\method url body headers -> ElmRoot.Types.NodeHttpRequest requestId method url body headers)
+        (Decode.field "method" ElmRoot.Http.httpMethodDecoder)
         (Decode.field "url" decodeUrl)
         (Decode.field "body" Decode.string)
-        (Decode.field "headers" (Decode.list Http.decodeRequestHeader))
+        (Decode.field "headers" (Decode.list ElmRoot.Http.decodeRequestHeader))
 
 
-httpRequestDecodeWithId : Decode.Decoder Types.NodeHttpRequest
+httpRequestDecodeWithId : Decode.Decoder ElmRoot.Types.NodeHttpRequest
 httpRequestDecodeWithId =
     Decode.field "id" Decode.string
         |> Decode.andThen
             (\stringId ->
                 let
                     requestId =
-                        Types.requestIdFromString stringId
+                        ElmRoot.Types.requestIdFromString stringId
                 in
                 httpRequestDecode requestId
             )

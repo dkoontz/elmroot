@@ -1,4 +1,4 @@
-module Http exposing (AccessControlAllowOrigin(..), AuthorizationType(..), CacheDirective(..), ConnectionType(..), ContentDisposition(..), Encoding(..), HttpMethod(..), MimeType(..), RequestHeader(..), ResponseHeader(..), RetryAfter(..), StrictTransportSecurity(..), XFrameOptions(..), authorizationDecoder, cacheDirectiveDecoder, connectionTypeDecoder, decodeRequestHeader, encodeResponseHeader, encodingDecoder, formatImfFixdate, httpMethodDecoder, httpMethodEncoder, imfFixdateDecoder, imfFixdateEncoder, mimeTypeDecoder, parseImfFixdate)
+module ElmRoot.Http exposing (AccessControlAllowOrigin(..), AuthorizationType(..), CacheDirective(..), ConnectionType(..), ContentDisposition(..), Encoding(..), HttpMethod(..), MimeType(..), RequestHeader(..), ResponseHeader(..), RetryAfter(..), StrictTransportSecurity(..), XFrameOptions(..), authorizationDecoder, cacheDirectiveDecoder, connectionTypeDecoder, decodeRequestHeader, encodeResponseHeader, encodingDecoder, formatImfFixdate, httpMethodDecoder, httpMethodEncoder, imfFixdateDecoder, imfFixdateEncoder, mimeTypeDecoder, parseImfFixdate)
 
 import Json.Decode as Decode
 import Json.Decode.Pipeline as Pipeline

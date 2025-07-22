@@ -5,13 +5,13 @@ export default defineConfig(({ mode }) => ({
   plugins: [
     elm({
       // Disable optimization in development mode to enable Debug.log
-      optimize: mode !== "development"
-    })
+      optimize: mode !== "development",
+    }),
   ],
   build: {
     // Build as library for Node.js
     lib: {
-      entry: "src/Main.elm",
+      entry: "examples/Main.elm",
       name: "Main",
       formats: ["es"],
       fileName: (format) => `main.${format === "es" ? "mjs" : "js"}`,

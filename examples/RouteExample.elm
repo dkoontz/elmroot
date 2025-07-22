@@ -1,10 +1,10 @@
 module RouteExample exposing (..)
 
-import Http
+import ElmRoot
+import ElmRoot.Http
+import ElmRoot.Types
 import Json.Decode as Decode
 import Json.Encode as Encode
-import Server
-import Types
 import Url.Parser as Parser exposing ((</>))
 
 
@@ -58,7 +58,7 @@ decodeCreateUser =
 -- Route handlers
 
 
-getUserHandler : Types.Request Route () -> Types.Response GetUserResponse
+getUserHandler : ElmRoot.Types.Request Route () -> ElmRoot.Types.Response GetUserResponse
 getUserHandler request =
     -- In real app, would fetch from database using the route
     let
@@ -81,11 +81,11 @@ getUserHandler request =
     { id = request.id
     , status = 200
     , body = user
-    , headers = [ Http.ResponseContentType Http.ApplicationJson ]
+    , headers = [ ElmRoot.Http.ResponseContentType ElmRoot.Http.ApplicationJson ]
     }
 
 
-createUserHandler : Types.Request Route CreateUserRequest -> Types.Response ()
+createUserHandler : ElmRoot.Types.Request Route CreateUserRequest -> ElmRoot.Types.Response ()
 createUserHandler request =
     -- In real app, would save to database using request.body
     { id = request.id
@@ -95,24 +95,24 @@ createUserHandler request =
     }
 
 
-getUserRoute : Types.RouteHandler
+getUserRoute : ElmRoot.Types.RouteHandler
 getUserRoute =
-    Server.createRoute
-        { method = Http.GET
+    ElmRoot.createRoute
+        { method = ElmRoot.Http.GET
         , path = Parser.s "user" </> Parser.int |> Parser.map GetUser
-        , requestDecoder = Server.emptyRequestBody
-        , responseEncoder = Server.jsonResponseBody encodeUser
+        , requestDecoder = ElmRoot.emptyRequestBody
+        , responseEncoder = ElmRoot.jsonResponseBody encodeUser
         , handler = getUserHandler
         }
 
 
-createUserRoute : Types.RouteHandler
+createUserRoute : ElmRoot.Types.RouteHandler
 createUserRoute =
-    Server.createRoute
-        { method = Http.POST
+    ElmRoot.createRoute
+        { method = ElmRoot.Http.POST
         , path = Parser.s "users" |> Parser.map CreateUser
-        , requestDecoder = Server.jsonRequestBody decodeCreateUser
-        , responseEncoder = Server.emptyResponseBody
+        , requestDecoder = ElmRoot.jsonRequestBody decodeCreateUser
+        , responseEncoder = ElmRoot.emptyResponseBody
         , handler = createUserHandler
         }
 
@@ -121,7 +121,7 @@ createUserRoute =
 -- Application with routes
 
 
-exampleApp : Types.Application
+exampleApp : ElmRoot.Types.Application
 exampleApp =
     { routes = [ getUserRoute, createUserRoute ]
     , notFoundHandler =
