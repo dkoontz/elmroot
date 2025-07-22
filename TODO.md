@@ -1,0 +1,8 @@
+- Logging in Node
+- Content-Type should be a custom type not String
+- Port for custom effects
+  - Elm side specifies types for custom Effect
+  - Node side provides implementation
+  - System to detect mismatches?
+  - Database
+  - Logging?

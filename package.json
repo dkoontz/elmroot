@@ -1,0 +1,31 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node main.js",
+    "start-background": "node main.js > server.log 2>&1 &",
+    "build": "need to implement",
+    "validate": "npm run format:validate && npm run lint && npm run build",
+    "lint": "npx elm-review",
+    "lint:fix": "npx elm-review --fix-all",
+    "lint:watch": "npx elm-review --watch",
+    "format": "npx elm-format --yes src/",
+    "format:validate": "npx elm-format --validate src/",
+    "prebuild": "npm run format",
+    "prestart": "npm run build"
+  },
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "description": "",
+  "devDependencies": {
+    "elm-format": "^0.8.8",
+    "elm-review": "^2.13.3",
+    "elm-watch": "^1.2.2"
+  },
+  "dependencies": {
+    "elm-debug-transformer": "^1.2.1",
+    "uuid": "^9.0.0"
+  }
+}
