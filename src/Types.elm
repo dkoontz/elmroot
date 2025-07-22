@@ -1,4 +1,4 @@
-module Types exposing (Application, AuthHeaders(..), EmptyBodyData(..), EmptyHeaders(..), EmptyToEmptyRoute, EmptyToJsonRoute, EmptyToTextRoute, HeaderType(..), Headers, HttpBody(..), HttpBodyDecoder, HttpBodyEncoder, HttpMethod(..), JsonHeaders(..), JsonToJsonRoute, NoRouteParams(..), Request, RequestId, RequestTypes, Response, ResponseTypes, RouteHandler(..), TextHeaders(..), applicationJson, decodeRequestId, emptyBody, emptyBodyDecoder, emptyBodyEncoder, emptyHeaders, emptyRequest, emptyResponse, jsonBodyDecoder, jsonBodyEncoder, jsonHeaders, jsonRequest, jsonResponse, octetStream, requestIdToString, stringResponse, textBodyDecoder, textBodyEncoder, textPlain, textResponse)
+module Types exposing (Application, HttpBody(..), NodeHttpRequest, Request, RequestId, Response, RouteConfig, RouteHandler(..), decodeRequestId, requestIdFromString, requestIdToString)
 
 import Http
 import Json.Decode as Decode
@@ -9,7 +9,7 @@ import Url.Parser
 
 type alias Application =
     { routes : List RouteHandler
-    , notFoundHandler : Request -> Response
+    , notFoundHandler : NodeHttpRequest -> Response String
     }
 
 
@@ -17,20 +17,6 @@ type HttpBody bodyType
     = JsonBody bodyType
     | TextBody String
     | EmptyBody
-
-
-type alias RequestTypes headerType bodyType =
-    { headerType : HeaderType headerType
-    , bodyType : HttpBody bodyType
-    , bodyDecoder : HttpBodyDecoder bodyType
-    }
-
-
-type alias ResponseTypes headerType bodyType =
-    { headerType : HeaderType headerType
-    , bodyType : HttpBody bodyType
-    , bodyEncoder : HttpBodyEncoder bodyType
-    }
 
 
 {-| This is an opaque type containing the id passed in from Node. By remaining opaque
@@ -45,6 +31,11 @@ decodeRequestId =
     Decode.map RequestId Decode.string
 
 
+requestIdFromString : String -> RequestId
+requestIdFromString id =
+    RequestId id
+
+
 requestIdToString : RequestId -> String
 requestIdToString (RequestId id) =
     id
@@ -54,22 +45,38 @@ type alias Response responseTypes =
     { id : RequestId
     , status : Int
     , body : responseTypes
-    , headers : List Http.RequestHeader
+    , headers : List Http.ResponseHeader
     }
 
 
-type alias Request routeParams requestBodyData =
+type alias Request route requestBodyData =
     { id : RequestId
-    , routeParams : routeParams
+    , route : route
     , body : requestBodyData
     , headers : List Http.RequestHeader
     }
 
 
-type alias RouteHandler routeParams requestHeaders requestBodyData responseHeaders responseData =
+type alias NodeHttpRequest =
+    { id : RequestId
+    , method : Http.HttpMethod
+    , url : Url.Url
+    , body : String
+    , headers : List Http.RequestHeader
+    }
+
+
+type RouteHandler
+    = RouteHandler
+        { method : Http.HttpMethod
+        , matcher : NodeHttpRequest -> Maybe (Result String (Response String))
+        }
+
+
+type alias RouteConfig route requestBody responseBody =
     { method : Http.HttpMethod
-    , route : Url.Parser.Parser (routeParams -> routeParams) routeParams
-    , requestType : RequestTypes requestHeaders requestBodyData
-    , responseType : ResponseTypes responseHeaders responseData
-    , handler : Request routeParams requestBodyData -> Response responseData
+    , path : Url.Parser.Parser (route -> route) route
+    , requestDecoder : String -> Result String requestBody
+    , responseEncoder : responseBody -> String
+    , handler : Request route requestBody -> Response responseBody
     }

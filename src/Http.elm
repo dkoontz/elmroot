@@ -1,4 +1,4 @@
-module Http exposing (AccessControlAllowOrigin(..), AuthorizationType(..), CacheDirective(..), ConnectionType(..), ContentDisposition(..), Encoding(..), HttpMethod(..), MimeType(..), RequestHeader(..), ResponseHeader(..), RetryAfter(..), StrictTransportSecurity(..), XFrameOptions(..), authorizationDecoder, cacheDirectiveDecoder, connectionTypeDecoder, decodeRequestHeader, encodeResponseHeader, encodingDecoder, formatImfFixdate, imfFixdateDecoder, imfFixdateEncoder, mimeTypeDecoder, parseImfFixdate)
+module Http exposing (AccessControlAllowOrigin(..), AuthorizationType(..), CacheDirective(..), ConnectionType(..), ContentDisposition(..), Encoding(..), HttpMethod(..), MimeType(..), RequestHeader(..), ResponseHeader(..), RetryAfter(..), StrictTransportSecurity(..), XFrameOptions(..), authorizationDecoder, cacheDirectiveDecoder, connectionTypeDecoder, decodeRequestHeader, encodeResponseHeader, encodingDecoder, formatImfFixdate, httpMethodDecoder, httpMethodEncoder, imfFixdateDecoder, imfFixdateEncoder, mimeTypeDecoder, parseImfFixdate)
 
 import Json.Decode as Decode
 import Json.Decode.Pipeline as Pipeline
@@ -421,6 +421,25 @@ httpMethodToString method =
 
         OPTIONS ->
             "OPTIONS"
+
+
+httpMethodDecoder : Decode.Decoder HttpMethod
+httpMethodDecoder =
+    Decode.string
+        |> Decode.andThen
+            (\methodStr ->
+                case httpMethodFromString methodStr of
+                    Ok method ->
+                        Decode.succeed method
+
+                    Err error ->
+                        Decode.fail error
+            )
+
+
+httpMethodEncoder : HttpMethod -> Encode.Value
+httpMethodEncoder method =
+    Encode.string (httpMethodToString method)
 
 
 parseImfFixdate : String -> Result String Time.Posix

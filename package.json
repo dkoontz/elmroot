@@ -5,11 +5,13 @@
   "scripts": {
     "start": "node main.js",
     "start-background": "node main.js > server.log 2>&1 &",
-    "build": "need to implement",
+    "start:debug": "npm run build:debug && LOG_LEVEL=debug node main.js",
+    "build": "vite build",
+    "build:debug": "vite build --mode development",
+    "dev": "vite dev",
     "validate": "npm run format:validate && npm run lint && npm run build",
     "lint": "npx elm-review",
     "lint:fix": "npx elm-review --fix-all",
-    "lint:watch": "npx elm-review --watch",
     "format": "npx elm-format --yes src/",
     "format:validate": "npx elm-format --validate src/",
     "prebuild": "npm run format",
@@ -22,10 +24,16 @@
   "devDependencies": {
     "elm-format": "^0.8.8",
     "elm-review": "^2.13.3",
-    "elm-watch": "^1.2.2"
+    "elm-watch": "^1.2.2",
+    "nodemon": "^3.1.10",
+    "vite": "^7.0.2",
+    "vite-plugin-elm": "^3.0.1",
+    "vite-plugin-elm-watch": "^1.4.4"
   },
   "dependencies": {
     "elm-debug-transformer": "^1.2.1",
+    "pino": "^9.7.0",
+    "pino-pretty": "^13.0.0",
     "uuid": "^9.0.0"
   }
 }

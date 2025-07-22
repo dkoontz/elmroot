@@ -1,9 +1,9 @@
 module Main exposing (main)
 
-import App
+import RouteExample
 import Server
 
 
 main : Server.HttpServer
 main =
-    Server.createServer App.exampleApp
+    Server.createServer RouteExample.exampleApp
