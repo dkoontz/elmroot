@@ -6,7 +6,6 @@ import Json.Decode as Decode
 import Json.Encode as Encode
 import Platform
 import Url
-import Url.Parser
 
 
 
@@ -26,17 +25,18 @@ type alias HttpServer =
     Program () Model Msg
 
 
-createRoute : ElmRoot.Types.RouteConfig route requestBody responseBody -> ElmRoot.Types.RouteHandler
+createRoute : ElmRoot.Types.RouteConfig routeParams requestBody responseBody -> ElmRoot.Types.RouteHandler
 createRoute config =
     let
-        processRequest { id, route, requestBody, headers, handler, responseEncoder } =
+        processRequest { id, params, requestBody, headers, handler, responseEncoder, url } =
             -- Create the typed request
             let
                 typedRequest =
                     { id = id
-                    , route = route
+                    , params = params
                     , body = requestBody
                     , headers = headers
+                    , url = url
                     }
 
                 -- Call the user's handler
@@ -65,26 +65,32 @@ createRoute config =
                 -- Check if HTTP method matches
                 if nodeRequest.method == config.method then
                     -- Try to parse the URL path
-                    case Url.Parser.parse config.path nodeRequest.url of
-                        Just route ->
-                            -- Try to decode the request body
-                            case config.requestDecoder nodeRequest.body of
-                                Ok requestBody ->
-                                    Just
-                                        (Ok
-                                            (processRequest
-                                                { id = nodeRequest.id
-                                                , route = route
-                                                , requestBody = requestBody
-                                                , headers = nodeRequest.headers
-                                                , handler = config.handler
-                                                , responseEncoder = config.responseEncoder
-                                                }
-                                            )
-                                        )
+                    case config.route nodeRequest.url.path of
+                        Just paramsResult ->
+                            case paramsResult of
+                                Err error ->
+                                    Just (Err error)
 
-                                Err decodeError ->
-                                    Just (Err decodeError)
+                                Ok params ->
+                                    -- Route params parsed ok, now try to decode the request body
+                                    case config.requestDecoder nodeRequest.body of
+                                        Ok requestBody ->
+                                            Just
+                                                (Ok
+                                                    (processRequest
+                                                        { id = nodeRequest.id
+                                                        , params = params
+                                                        , requestBody = requestBody
+                                                        , headers = nodeRequest.headers
+                                                        , handler = config.handler
+                                                        , responseEncoder = config.responseEncoder
+                                                        , url = nodeRequest.url
+                                                        }
+                                                    )
+                                                )
+
+                                        Err decodeError ->
+                                            Just (Err decodeError)
 
                         Nothing ->
                             -- URL didn't match this route
@@ -208,15 +214,6 @@ type alias NodeHttpResponse =
 -- RUNNER UTILITIES
 
 
-createResponse : ElmRoot.Types.RequestId -> Int -> List ElmRoot.Http.ResponseHeader -> responseBody -> ElmRoot.Types.Response responseBody
-createResponse requestId status headers body =
-    { id = requestId
-    , status = status
-    , body = body
-    , headers = headers
-    }
-
-
 responseToHttp : ElmRoot.Types.Response String -> NodeHttpResponse
 responseToHttp response =
     { id = response.id
@@ -233,16 +230,6 @@ badRequestResponse requestId errorMessage =
     , body = "{\"error\": \"Bad Request\", \"message\": \"" ++ errorMessage ++ "\"}"
     , headers = []
     }
-
-
-executeRoutes : ElmRoot.Types.NodeHttpRequest -> List ElmRoot.Types.RouteHandler -> ElmRoot.Types.Response String
-executeRoutes request routes =
-    case tryRoutes request routes of
-        Just response ->
-            response
-
-        Nothing ->
-            notFoundResponse request.id
 
 
 tryRoutes : ElmRoot.Types.NodeHttpRequest -> List ElmRoot.Types.RouteHandler -> Maybe (ElmRoot.Types.Response String)

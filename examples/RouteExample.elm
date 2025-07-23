@@ -2,10 +2,10 @@ module RouteExample exposing (..)
 
 import ElmRoot
 import ElmRoot.Http
+import ElmRoot.RouteParser as RouteParser
 import ElmRoot.Types
 import Json.Decode as Decode
 import Json.Encode as Encode
-import Url.Parser as Parser exposing ((</>))
 
 
 
@@ -25,11 +25,6 @@ type alias CreateUserRequest =
     , lastName : String
     , email : String
     }
-
-
-type Route
-    = GetUser Int
-    | CreateUser
 
 
 
@@ -54,22 +49,11 @@ decodeCreateUser =
         (Decode.field "email" Decode.string)
 
 
-
--- Route handlers
-
-
-getUserHandler : ElmRoot.Types.Request Route () -> ElmRoot.Types.Response GetUserResponse
+getUserHandler : ElmRoot.Types.Request { id : Int } () -> ElmRoot.Types.Response GetUserResponse
 getUserHandler request =
-    -- In real app, would fetch from database using the route
     let
         userId =
-            case request.route of
-                GetUser id ->
-                    id
-
-                -- This shouldn't happen due to routing
-                _ ->
-                    0
+            request.params.id
 
         user =
             { id = userId
@@ -85,9 +69,24 @@ getUserHandler request =
     }
 
 
-createUserHandler : ElmRoot.Types.Request Route CreateUserRequest -> ElmRoot.Types.Response ()
+getPostHandler : ElmRoot.Types.Request { userId : Int, postId : Int } () -> ElmRoot.Types.Response String
+getPostHandler request =
+    let
+        userIdStr =
+            String.fromInt request.params.userId
+
+        postIdStr =
+            String.fromInt request.params.postId
+    in
+    { id = request.id
+    , status = 200
+    , body = "User " ++ userIdStr ++ " - Post " ++ postIdStr
+    , headers = [ ElmRoot.Http.ResponseContentType ElmRoot.Http.TextPlain ]
+    }
+
+
+createUserHandler : ElmRoot.Types.Request () CreateUserRequest -> ElmRoot.Types.Response ()
 createUserHandler request =
-    -- In real app, would save to database using request.body
     { id = request.id
     , status = 201
     , body = ()
@@ -99,10 +98,29 @@ getUserRoute : ElmRoot.Types.RouteHandler
 getUserRoute =
     ElmRoot.createRoute
         { method = ElmRoot.Http.GET
-        , path = Parser.s "user" </> Parser.int |> Parser.map GetUser
+        , route =
+            RouteParser.defineRoute
+                "/user/:id"
+                (RouteParser.succeed (\id -> { id = id }) |> RouteParser.required "id" RouteParser.int)
         , requestDecoder = ElmRoot.emptyRequestBody
         , responseEncoder = ElmRoot.jsonResponseBody encodeUser
         , handler = getUserHandler
+        }
+
+
+getPostRoute : ElmRoot.Types.RouteHandler
+getPostRoute =
+    ElmRoot.createRoute
+        { method = ElmRoot.Http.GET
+        , route =
+            RouteParser.defineRoute "/user/:userId/post/:postId"
+                (RouteParser.succeed (\userId postId -> { userId = userId, postId = postId })
+                    |> RouteParser.required "userId" RouteParser.int
+                    |> RouteParser.required "postId" RouteParser.int
+                )
+        , requestDecoder = ElmRoot.emptyRequestBody
+        , responseEncoder = identity
+        , handler = getPostHandler
         }
 
 
@@ -110,20 +128,17 @@ createUserRoute : ElmRoot.Types.RouteHandler
 createUserRoute =
     ElmRoot.createRoute
         { method = ElmRoot.Http.POST
-        , path = Parser.s "users" |> Parser.map CreateUser
+        , route =
+            RouteParser.defineRoute "/user" RouteParser.noParams
         , requestDecoder = ElmRoot.jsonRequestBody decodeCreateUser
         , responseEncoder = ElmRoot.emptyResponseBody
         , handler = createUserHandler
         }
 
 
-
--- Application with routes
-
-
 exampleApp : ElmRoot.Types.Application
 exampleApp =
-    { routes = [ getUserRoute, createUserRoute ]
+    { routes = [ getUserRoute, getPostRoute, createUserRoute ]
     , notFoundHandler =
         \request ->
             { id = request.id

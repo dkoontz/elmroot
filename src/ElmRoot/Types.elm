@@ -1,10 +1,7 @@
 module ElmRoot.Types exposing (Application, NodeHttpRequest, Request, RequestId, Response, RouteConfig, RouteHandler(..), requestIdFromString, requestIdToString)
 
 import ElmRoot.Http
-import Json.Decode as Decode
-import Json.Encode as Encode
 import Url
-import Url.Parser
 
 
 {-| Given a set of routes and a not-found handler, this type represents the HTTP server application.
@@ -55,11 +52,12 @@ type alias Response responseTypes =
     }
 
 
-type alias Request route requestBodyData =
+type alias Request routeParams requestBodyData =
     { id : RequestId
-    , route : route
+    , params : routeParams
     , body : requestBodyData
     , headers : List ElmRoot.Http.RequestHeader
+    , url : Url.Url
     }
 
 
@@ -81,10 +79,10 @@ type RouteHandler
         }
 
 
-type alias RouteConfig route requestBody responseBody =
+type alias RouteConfig routeParams requestBody responseBody =
     { method : ElmRoot.Http.HttpMethod
-    , path : Url.Parser.Parser (route -> route) route
+    , route : String -> Maybe (Result String routeParams)
     , requestDecoder : String -> Result String requestBody
     , responseEncoder : responseBody -> String
-    , handler : Request route requestBody -> Response responseBody
+    , handler : Request routeParams requestBody -> Response responseBody
     }

@@ -78,7 +78,6 @@ type AuthorizationType
 
 type AccessControlAllowOrigin
     = Wildcard
-    | SpecificOrigin String
 
 
 type ContentDisposition
@@ -923,9 +922,6 @@ accessControlAllowOriginToString origin =
         Wildcard ->
             "*"
 
-        SpecificOrigin url ->
-            url
-
 
 xFrameOptionsToString : XFrameOptions -> String
 xFrameOptionsToString option =
@@ -1046,73 +1042,6 @@ mimeTypeDecoder =
             )
 
 
-mimeTypeEncoder : MimeType -> Encode.Value
-mimeTypeEncoder mimeType =
-    case mimeType of
-        ApplicationFormUrlEncoded ->
-            Encode.string "application/x-www-form-urlencoded"
-
-        ApplicationJson ->
-            Encode.string "application/json"
-
-        ApplicationOctetStream ->
-            Encode.string "application/octet-stream"
-
-        ApplicationPdf ->
-            Encode.string "application/pdf"
-
-        ApplicationZip ->
-            Encode.string "application/zip"
-
-        AudioMp3 ->
-            Encode.string "audio/mpeg"
-
-        AudioWebm ->
-            Encode.string "audio/webm"
-
-        ImageAvif ->
-            Encode.string "image/avif"
-
-        ImageGif ->
-            Encode.string "image/gif"
-
-        ImageJpeg ->
-            Encode.string "image/jpeg"
-
-        ImagePng ->
-            Encode.string "image/png"
-
-        ImageSvg ->
-            Encode.string "image/svg+xml"
-
-        ImageWebp ->
-            Encode.string "image/webp"
-
-        MultipartFormData ->
-            Encode.string "multipart/form-data"
-
-        TextCss ->
-            Encode.string "text/css"
-
-        TextHtml ->
-            Encode.string "text/html"
-
-        TextJavascript ->
-            Encode.string "text/javascript"
-
-        TextPlain ->
-            Encode.string "text/plain"
-
-        VideoMp4 ->
-            Encode.string "video/mp4"
-
-        VideoWebm ->
-            Encode.string "video/webm"
-
-        CustomMime str ->
-            Encode.string str
-
-
 encodingDecoder : Decode.Decoder Encoding
 encodingDecoder =
     Decode.string
@@ -1137,25 +1066,6 @@ encodingDecoder =
                     _ ->
                         Decode.fail ("Unknown encoding: " ++ str)
             )
-
-
-encodingEncoder : Encoding -> Encode.Value
-encodingEncoder encoding =
-    case encoding of
-        Br ->
-            Encode.string "br"
-
-        Deflate ->
-            Encode.string "deflate"
-
-        Gzip ->
-            Encode.string "gzip"
-
-        Identity ->
-            Encode.string "identity"
-
-        Star ->
-            Encode.string "*"
 
 
 cacheDirectiveDecoder : Decode.Decoder CacheDirective
