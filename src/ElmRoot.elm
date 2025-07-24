@@ -1,10 +1,12 @@
-port module ElmRoot exposing (HttpServer, createRoute, createServer, emptyRequestBody, emptyResponseBody, jsonRequestBody, jsonResponseBody)
+port module ElmRoot exposing (HttpServer, createRoute, createServer, emptyRequestBody, emptyResponseBody, jsonRequestBody, jsonResponseBody, stringResponseBody)
 
 import ElmRoot.Http
-import ElmRoot.Types
+import ElmRoot.Types exposing (RequestId)
 import Json.Decode as Decode
 import Json.Encode as Encode
 import Platform
+import Task
+import TaskPort
 import Url
 
 
@@ -40,23 +42,17 @@ createRoute config =
                     }
 
                 -- Call the user's handler
-                response =
-                    handler typedRequest
-
-                -- Encode the response body to String
-                encodedBody =
-                    responseEncoder response.body
-
-                -- Create new response with encoded body
-                encodedResponse : ElmRoot.Types.Response String
-                encodedResponse =
-                    { id = response.id
-                    , status = response.status
-                    , body = encodedBody
-                    , headers = response.headers
-                    }
             in
-            encodedResponse
+            handler typedRequest
+                |> Task.map
+                    (\response ->
+                        -- Encode the response body to String
+                        { id = response.id
+                        , status = response.status
+                        , body = responseEncoder response.body
+                        , headers = response.headers
+                        }
+                    )
     in
     ElmRoot.Types.RouteHandler
         { method = config.method
@@ -122,6 +118,11 @@ jsonResponseBody encoder =
     encoder >> Encode.encode 0
 
 
+stringResponseBody : String -> String
+stringResponseBody =
+    identity
+
+
 
 -- Elm lifecycle types and functions
 
@@ -133,6 +134,7 @@ type alias Model =
 type Msg
     = OnRequest ElmRoot.Types.NodeHttpRequest
     | OnInvalidHttpFormat ElmRoot.Types.RequestId String
+    | RequestResult ElmRoot.Types.RequestId (TaskPort.Result (ElmRoot.Types.Response String))
 
 
 init : ElmRoot.Types.Application -> flags -> ( Model, Cmd Msg )
@@ -151,31 +153,45 @@ update msg model =
                             routeResponse
 
                         Nothing ->
-                            model.application.notFoundHandler request
+                            Task.succeed (model.application.notFoundHandler request)
 
-                response =
+                task =
                     appResponse
-                        |> responseToHttp
-                        |> httpResponseEncode
+                        |> Task.attempt (RequestResult request.id)
             in
             ( model
-            , sendResponse response
+            , task
             )
 
         OnInvalidHttpFormat requestId errorMessage ->
             ( model
             , Cmd.batch
-                [ notFoundResponse requestId |> httpResponseEncode |> sendResponse
+                [ notFoundResponse requestId |> nodeHttpResponseEncode |> sendResponse
                 , logging ("HttpRequest from Node was invalid: " ++ errorMessage ++ " (RequestId: " ++ ElmRoot.Types.requestIdToString requestId ++ ")")
                 ]
             )
+
+        RequestResult requestId result ->
+            case result of
+                Ok response ->
+                    ( model
+                    , response |> responseToNodeHttp |> nodeHttpResponseEncode |> sendResponse
+                    )
+
+                Err error ->
+                    ( model
+                    , Cmd.batch
+                        [ internalServerErrorResponse requestId (TaskPort.errorToString error) |> nodeHttpResponseEncode |> sendResponse
+                        , logging ("Error processing request: " ++ TaskPort.errorToString error)
+                        ]
+                    )
 
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
     httpRequest
         (\value ->
-            case Decode.decodeValue httpRequestDecodeWithId value of
+            case Decode.decodeValue nodeHttpRequestDecodeWithId value of
                 Ok request ->
                     OnRequest request
 
@@ -214,8 +230,8 @@ type alias NodeHttpResponse =
 -- RUNNER UTILITIES
 
 
-responseToHttp : ElmRoot.Types.Response String -> NodeHttpResponse
-responseToHttp response =
+responseToNodeHttp : ElmRoot.Types.Response String -> NodeHttpResponse
+responseToNodeHttp response =
     { id = response.id
     , status = response.status
     , body = response.body
@@ -232,7 +248,16 @@ badRequestResponse requestId errorMessage =
     }
 
 
-tryRoutes : ElmRoot.Types.NodeHttpRequest -> List ElmRoot.Types.RouteHandler -> Maybe (ElmRoot.Types.Response String)
+internalServerErrorResponse : ElmRoot.Types.RequestId -> String -> ElmRoot.Types.Response String
+internalServerErrorResponse requestId errorMessage =
+    { id = requestId
+    , status = 500
+    , body = "{\"error\": \"Internal Server Error\", \"message\": \"" ++ errorMessage ++ "\"}"
+    , headers = []
+    }
+
+
+tryRoutes : ElmRoot.Types.NodeHttpRequest -> List ElmRoot.Types.RouteHandler -> Maybe (TaskPort.Task (ElmRoot.Types.Response String))
 tryRoutes request routes =
     case routes of
         [] ->
@@ -245,7 +270,7 @@ tryRoutes request routes =
                         Just response
 
                     Just (Err error) ->
-                        Just (badRequestResponse request.id error)
+                        Just (Task.succeed (badRequestResponse request.id error))
 
                     Nothing ->
                         tryRoutes request remaining
@@ -263,8 +288,8 @@ notFoundResponse requestId =
     }
 
 
-httpResponseEncode : NodeHttpResponse -> Encode.Value
-httpResponseEncode response =
+nodeHttpResponseEncode : NodeHttpResponse -> Encode.Value
+nodeHttpResponseEncode response =
     Encode.object
         [ ( "id", Encode.string (ElmRoot.Types.requestIdToString response.id) )
         , ( "status", Encode.int response.status )
@@ -273,8 +298,8 @@ httpResponseEncode response =
         ]
 
 
-httpRequestDecode : ElmRoot.Types.RequestId -> Decode.Decoder ElmRoot.Types.NodeHttpRequest
-httpRequestDecode requestId =
+nodeHttpRequestDecode : ElmRoot.Types.RequestId -> Decode.Decoder ElmRoot.Types.NodeHttpRequest
+nodeHttpRequestDecode requestId =
     Decode.map4 (\method url body headers -> ElmRoot.Types.NodeHttpRequest requestId method url body headers)
         (Decode.field "method" ElmRoot.Http.httpMethodDecoder)
         (Decode.field "url" decodeUrl)
@@ -282,8 +307,8 @@ httpRequestDecode requestId =
         (Decode.field "headers" (Decode.list ElmRoot.Http.decodeRequestHeader))
 
 
-httpRequestDecodeWithId : Decode.Decoder ElmRoot.Types.NodeHttpRequest
-httpRequestDecodeWithId =
+nodeHttpRequestDecodeWithId : Decode.Decoder ElmRoot.Types.NodeHttpRequest
+nodeHttpRequestDecodeWithId =
     Decode.field "id" Decode.string
         |> Decode.andThen
             (\stringId ->
@@ -291,7 +316,7 @@ httpRequestDecodeWithId =
                     requestId =
                         ElmRoot.Types.requestIdFromString stringId
                 in
-                httpRequestDecode requestId
+                nodeHttpRequestDecode requestId
             )
 
 

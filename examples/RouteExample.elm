@@ -1,11 +1,13 @@
 module RouteExample exposing (..)
 
 import ElmRoot
-import ElmRoot.Http
+import ElmRoot.Http as ElmRoot
 import ElmRoot.RouteParser as RouteParser
-import ElmRoot.Types
+import ElmRoot.Types as ElmRoot
 import Json.Decode as Decode
 import Json.Encode as Encode
+import Task
+import TaskPort
 
 
 
@@ -49,7 +51,7 @@ decodeCreateUser =
         (Decode.field "email" Decode.string)
 
 
-getUserHandler : ElmRoot.Types.Request { id : Int } () -> ElmRoot.Types.Response GetUserResponse
+getUserHandler : ElmRoot.Request { id : Int } () -> TaskPort.Task (ElmRoot.Response GetUserResponse)
 getUserHandler request =
     let
         userId =
@@ -62,14 +64,15 @@ getUserHandler request =
             , email = "john.doe@example.com"
             }
     in
-    { id = request.id
-    , status = 200
-    , body = user
-    , headers = [ ElmRoot.Http.ResponseContentType ElmRoot.Http.ApplicationJson ]
-    }
+    Task.succeed
+        { id = request.id
+        , status = 200
+        , body = user
+        , headers = [ ElmRoot.ResponseContentType ElmRoot.ApplicationJson ]
+        }
 
 
-getPostHandler : ElmRoot.Types.Request { userId : Int, postId : Int } () -> ElmRoot.Types.Response String
+getPostHandler : ElmRoot.Request { userId : Int, postId : Int } () -> TaskPort.Task (ElmRoot.Response String)
 getPostHandler request =
     let
         userIdStr =
@@ -78,26 +81,28 @@ getPostHandler request =
         postIdStr =
             String.fromInt request.params.postId
     in
-    { id = request.id
-    , status = 200
-    , body = "User " ++ userIdStr ++ " - Post " ++ postIdStr
-    , headers = [ ElmRoot.Http.ResponseContentType ElmRoot.Http.TextPlain ]
-    }
+    Task.succeed
+        { id = request.id
+        , status = 200
+        , body = "User " ++ userIdStr ++ " - Post " ++ postIdStr
+        , headers = [ ElmRoot.ResponseContentType ElmRoot.TextPlain ]
+        }
 
 
-createUserHandler : ElmRoot.Types.Request () CreateUserRequest -> ElmRoot.Types.Response ()
+createUserHandler : ElmRoot.Request () CreateUserRequest -> TaskPort.Task (ElmRoot.Response ())
 createUserHandler request =
-    { id = request.id
-    , status = 201
-    , body = ()
-    , headers = []
-    }
+    Task.succeed
+        { id = request.id
+        , status = 201
+        , body = ()
+        , headers = []
+        }
 
 
-getUserRoute : ElmRoot.Types.RouteHandler
+getUserRoute : ElmRoot.RouteHandler
 getUserRoute =
     ElmRoot.createRoute
-        { method = ElmRoot.Http.GET
+        { method = ElmRoot.GET
         , route =
             RouteParser.defineRoute
                 "/user/:id"
@@ -108,10 +113,10 @@ getUserRoute =
         }
 
 
-getPostRoute : ElmRoot.Types.RouteHandler
+getPostRoute : ElmRoot.RouteHandler
 getPostRoute =
     ElmRoot.createRoute
-        { method = ElmRoot.Http.GET
+        { method = ElmRoot.GET
         , route =
             RouteParser.defineRoute "/user/:userId/post/:postId"
                 (RouteParser.succeed (\userId postId -> { userId = userId, postId = postId })
@@ -124,10 +129,10 @@ getPostRoute =
         }
 
 
-createUserRoute : ElmRoot.Types.RouteHandler
+createUserRoute : ElmRoot.RouteHandler
 createUserRoute =
     ElmRoot.createRoute
-        { method = ElmRoot.Http.POST
+        { method = ElmRoot.POST
         , route =
             RouteParser.defineRoute "/user" RouteParser.noParams
         , requestDecoder = ElmRoot.jsonRequestBody decodeCreateUser
@@ -136,7 +141,7 @@ createUserRoute =
         }
 
 
-exampleApp : ElmRoot.Types.Application
+exampleApp : ElmRoot.Application
 exampleApp =
     { routes = [ getUserRoute, getPostRoute, createUserRoute ]
     , notFoundHandler =

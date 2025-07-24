@@ -1,6 +1,7 @@
 module ElmRoot.Types exposing (Application, NodeHttpRequest, Request, RequestId, Response, RouteConfig, RouteHandler(..), requestIdFromString, requestIdToString)
 
 import ElmRoot.Http
+import TaskPort
 import Url
 
 
@@ -75,7 +76,7 @@ type alias NodeHttpRequest =
 type RouteHandler
     = RouteHandler
         { method : ElmRoot.Http.HttpMethod
-        , matcher : NodeHttpRequest -> Maybe (Result String (Response String))
+        , matcher : NodeHttpRequest -> Maybe (Result String (TaskPort.Task (Response String)))
         }
 
 
@@ -84,5 +85,5 @@ type alias RouteConfig routeParams requestBody responseBody =
     , route : String -> Maybe (Result String routeParams)
     , requestDecoder : String -> Result String requestBody
     , responseEncoder : responseBody -> String
-    , handler : Request routeParams requestBody -> Response responseBody
+    , handler : Request routeParams requestBody -> TaskPort.Task (Response responseBody)
     }

@@ -1,7 +1,12 @@
 import http from "http";
 import { v4 as uuidv4 } from "uuid";
-import { Elm } from "./dist/main.mjs";
 import pino from "pino";
+import * as TaskPort from "elm-taskport/js/taskport.js";
+import { XMLHttpRequest } from "xmlhttprequest";
+import { Elm } from "./dist/main.mjs";
+
+const elmFlags = {};
+const taskPortSettings = {};
 
 // Configure Pino logger
 const logger = pino({
@@ -17,89 +22,11 @@ const logger = pino({
   },
 });
 
-// Helper function to construct full URL from request
-function constructFullUrl(req) {
-  // Get protocol (http vs https)
-  const protocol = req.connection.encrypted ? "https" : "http";
-
-  // Get host header (may or may not include port)
-  const hostHeader = req.headers.host;
-
-  // Check if host already includes port
-  if (hostHeader && hostHeader.includes(":")) {
-    // Host header already has port (e.g., "localhost:3000")
-    return `${protocol}://${hostHeader}${req.url}`;
-  } else {
-    // No port in host header, need to determine if we should add one
-    const defaultPort = protocol === "https" ? 443 : 80;
-    const actualPort = req.socket.localPort;
-
-    if (actualPort && actualPort !== defaultPort) {
-      // Running on non-standard port, include it
-      return `${protocol}://${hostHeader}:${actualPort}${req.url}`;
-    } else {
-      // Standard port, don't include it
-      return `${protocol}://${hostHeader}${req.url}`;
-    }
-  }
-}
-
-// Global error handlers
-process.on("uncaughtException", (error) => {
-  logger.fatal(
-    { error: error.message, stack: error.stack },
-    "Uncaught Exception"
-  );
-  process.exit(1);
-});
-
-process.on("unhandledRejection", (reason, promise) => {
-  logger.fatal({ reason, promise }, "Unhandled Promise Rejection");
-  process.exit(1);
-});
-
-process.on("warning", (warning) => {
-  logger.warn(
-    {
-      name: warning.name,
-      message: warning.message,
-      stack: warning.stack,
-    },
-    "Node.js Warning"
-  );
-});
-
-// Graceful shutdown handlers
-const gracefulShutdown = (signal) => {
-  logger.info(`Received ${signal}. Starting graceful shutdown...`);
-
-  if (server) {
-    server.close((err) => {
-      if (err) {
-        logger.error({ error: err.message }, "Error during server shutdown");
-        process.exit(1);
-      }
-      logger.info("Server closed successfully");
-      process.exit(0);
-    });
-
-    // Force shutdown after 30 seconds
-    setTimeout(() => {
-      logger.error("Forced shutdown after timeout");
-      process.exit(1);
-    }, 30000);
-  } else {
-    process.exit(0);
-  }
-};
-
-process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
-process.on("SIGINT", () => gracefulShutdown("SIGINT"));
-
-const flags = {};
+setupErrorHandlers(process);
+setupTaskPort(this);
 
 // Initialize the Elm application
-const app = Elm.Main.init(flags);
+const app = Elm.Main.init(elmFlags);
 
 // Store pending HTTP responses
 const pendingResponses = new Map();
@@ -347,3 +274,97 @@ logger.info(
   },
   "Application starting"
 );
+
+// Helper function to construct full URL from request
+function constructFullUrl(req) {
+  // Get protocol (http vs https)
+  const protocol = req.connection.encrypted ? "https" : "http";
+
+  // Get host header (may or may not include port)
+  const hostHeader = req.headers.host;
+
+  // Check if host already includes port
+  if (hostHeader && hostHeader.includes(":")) {
+    // Host header already has port (e.g., "localhost:3000")
+    return `${protocol}://${hostHeader}${req.url}`;
+  } else {
+    // No port in host header, need to determine if we should add one
+    const defaultPort = protocol === "https" ? 443 : 80;
+    const actualPort = req.socket.localPort;
+
+    if (actualPort && actualPort !== defaultPort) {
+      // Running on non-standard port, include it
+      return `${protocol}://${hostHeader}:${actualPort}${req.url}`;
+    } else {
+      // Standard port, don't include it
+      return `${protocol}://${hostHeader}${req.url}`;
+    }
+  }
+}
+
+// Graceful shutdown handlers
+const gracefulShutdown = (signal) => {
+  logger.info(`Received ${signal}. Starting graceful shutdown...`);
+
+  if (server) {
+    server.close((err) => {
+      if (err) {
+        logger.error({ error: err.message }, "Error during server shutdown");
+        process.exit(1);
+      }
+      logger.info("Server closed successfully");
+      process.exit(0);
+    });
+
+    // Force shutdown after 30 seconds
+    setTimeout(() => {
+      logger.error("Forced shutdown after timeout");
+      process.exit(1);
+    }, 30000);
+  } else {
+    process.exit(0);
+  }
+};
+
+function setupErrorHandlers(process) {
+  // Global error handlers
+  process.on("uncaughtException", (error) => {
+    logger.fatal(
+      { error: error.message, stack: error.stack },
+      "Uncaught Exception"
+    );
+    process.exit(1);
+  });
+
+  process.on("unhandledRejection", (reason, promise) => {
+    logger.fatal({ reason, promise }, "Unhandled Promise Rejection");
+    process.exit(1);
+  });
+
+  process.on("warning", (warning) => {
+    logger.warn(
+      {
+        name: warning.name,
+        message: warning.message,
+        stack: warning.stack,
+      },
+      "Node.js Warning"
+    );
+  });
+
+  process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+  process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+}
+
+function setupTaskPort(context) {
+  global.XMLHttpRequest = function () {
+    XMLHttpRequest.call(context);
+    TaskPort.install(taskPortSettings, context);
+  };
+
+  TaskPort.register("executeSqlQuery", (query) => {
+    return Promise.resolve(
+      "This is the mock SQL result for the query '" + query + "'"
+    );
+  });
+}
