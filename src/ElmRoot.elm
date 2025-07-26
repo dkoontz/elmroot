@@ -14,7 +14,7 @@ import Url
 -- Exposed Server functionality
 
 
-createServer : ElmRoot.Types.Application -> HttpServer
+createServer : ElmRoot.Types.Application flags appModel -> HttpServer flags appModel
 createServer application =
     Platform.worker
         { init = init application
@@ -23,14 +23,14 @@ createServer application =
         }
 
 
-type alias HttpServer =
-    Program () Model Msg
+type alias HttpServer flags appModel =
+    Program flags (Model flags appModel) Msg
 
 
-createRoute : ElmRoot.Types.RouteConfig routeParams requestBody responseBody -> ElmRoot.Types.RouteHandler
+createRoute : ElmRoot.Types.RouteConfig appModel routeParams requestBody responseBody -> ElmRoot.Types.RouteHandler appModel
 createRoute config =
     let
-        processRequest { id, params, requestBody, headers, handler, responseEncoder, url } =
+        processRequest appModel { id, params, requestBody, headers, handler, responseEncoder, url } =
             -- Create the typed request
             let
                 typedRequest =
@@ -43,7 +43,7 @@ createRoute config =
 
                 -- Call the user's handler
             in
-            handler typedRequest
+            handler appModel typedRequest
                 |> Task.map
                     (\response ->
                         -- Encode the response body to String
@@ -57,7 +57,7 @@ createRoute config =
     ElmRoot.Types.RouteHandler
         { method = config.method
         , matcher =
-            \nodeRequest ->
+            \appModel nodeRequest ->
                 -- Check if HTTP method matches
                 if nodeRequest.method == config.method then
                     -- Try to parse the URL path
@@ -73,7 +73,7 @@ createRoute config =
                                         Ok requestBody ->
                                             Just
                                                 (Ok
-                                                    (processRequest
+                                                    (processRequest appModel
                                                         { id = nodeRequest.id
                                                         , params = params
                                                         , requestBody = requestBody
@@ -127,8 +127,10 @@ stringResponseBody =
 -- Elm lifecycle types and functions
 
 
-type alias Model =
-    { application : ElmRoot.Types.Application }
+type alias Model flags appModel =
+    { application : ElmRoot.Types.Application flags appModel
+    , appModel : appModel
+    }
 
 
 type Msg
@@ -137,18 +139,18 @@ type Msg
     | RequestResult ElmRoot.Types.RequestId (TaskPort.Result (ElmRoot.Types.Response String))
 
 
-init : ElmRoot.Types.Application -> flags -> ( Model, Cmd Msg )
-init application _ =
-    ( { application = application }, Cmd.none )
+init : ElmRoot.Types.Application flags appModel -> flags -> ( Model flags appModel, Cmd Msg )
+init application flags =
+    ( { application = application, appModel = application.init flags }, Cmd.none )
 
 
-update : Msg -> Model -> ( Model, Cmd Msg )
+update : Msg -> Model flags appModel -> ( Model flags appModel, Cmd Msg )
 update msg model =
     case msg of
         OnRequest request ->
             let
                 appResponse =
-                    case tryRoutes request model.application.routes of
+                    case tryRoutes model.appModel request model.application.routes of
                         Just routeResponse ->
                             routeResponse
 
@@ -179,15 +181,24 @@ update msg model =
                     )
 
                 Err error ->
+                    let
+                        errorResponse =
+                            case error of
+                                TaskPort.InteropError err ->
+                                    internalServerErrorResponse requestId "Error while communicating with TaskPort"
+
+                                TaskPort.JSError err ->
+                                    internalServerErrorResponse requestId "Error in JavaScript implementation of TaskPort"
+                    in
                     ( model
                     , Cmd.batch
-                        [ internalServerErrorResponse requestId (TaskPort.errorToString error) |> nodeHttpResponseEncode |> sendResponse
+                        [ errorResponse |> nodeHttpResponseEncode |> sendResponse
                         , logging ("Error processing request: " ++ TaskPort.errorToString error)
                         ]
                     )
 
 
-subscriptions : Model -> Sub Msg
+subscriptions : Model flags appModel -> Sub Msg
 subscriptions model =
     httpRequest
         (\value ->
@@ -243,7 +254,7 @@ badRequestResponse : ElmRoot.Types.RequestId -> String -> ElmRoot.Types.Response
 badRequestResponse requestId errorMessage =
     { id = requestId
     , status = 400
-    , body = "{\"error\": \"Bad Request\", \"message\": \"" ++ errorMessage ++ "\"}"
+    , body = Encode.object [ ( "error", Encode.string "Bad Request" ), ( "message", Encode.string errorMessage ) ] |> Encode.encode 0
     , headers = []
     }
 
@@ -252,20 +263,26 @@ internalServerErrorResponse : ElmRoot.Types.RequestId -> String -> ElmRoot.Types
 internalServerErrorResponse requestId errorMessage =
     { id = requestId
     , status = 500
-    , body = "{\"error\": \"Internal Server Error\", \"message\": \"" ++ errorMessage ++ "\"}"
+    , body =
+        Encode.object
+            [ ( "error", Encode.string "Internal Server Error" )
+            , ( "requestId", Encode.string (ElmRoot.Types.requestIdToString requestId) )
+            , ( "message", Encode.string errorMessage )
+            ]
+            |> Encode.encode 0
     , headers = []
     }
 
 
-tryRoutes : ElmRoot.Types.NodeHttpRequest -> List ElmRoot.Types.RouteHandler -> Maybe (TaskPort.Task (ElmRoot.Types.Response String))
-tryRoutes request routes =
+tryRoutes : appModel -> ElmRoot.Types.NodeHttpRequest -> List (ElmRoot.Types.RouteHandler appModel) -> Maybe (TaskPort.Task (ElmRoot.Types.Response String))
+tryRoutes appModel request routes =
     case routes of
         [] ->
             Nothing
 
         (ElmRoot.Types.RouteHandler config) :: remaining ->
             if request.method == config.method then
-                case config.matcher request of
+                case config.matcher appModel request of
                     Just (Ok response) ->
                         Just response
 
@@ -273,17 +290,17 @@ tryRoutes request routes =
                         Just (Task.succeed (badRequestResponse request.id error))
 
                     Nothing ->
-                        tryRoutes request remaining
+                        tryRoutes appModel request remaining
 
             else
-                tryRoutes request remaining
+                tryRoutes appModel request remaining
 
 
 notFoundResponse : ElmRoot.Types.RequestId -> ElmRoot.Types.Response String
 notFoundResponse requestId =
     { id = requestId
     , status = 404
-    , body = "{\"error\": \"Not Found\"}"
+    , body = Encode.object [ ( "error", Encode.string "NotFound" ) ] |> Encode.encode 0
     , headers = []
     }
 

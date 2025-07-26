@@ -5,12 +5,17 @@ import Json.Encode
 import TaskPort
 
 
-executeSqlQuery : String -> TaskPort.Task String
-executeSqlQuery =
+executeSqlQuery : Json.Decode.Decoder a -> { query : String, values : List String } -> TaskPort.Task a
+executeSqlQuery decoder =
     TaskPort.call
         { function = "executeSqlQuery"
-        , valueDecoder = Json.Decode.string
-        , argsEncoder = Json.Encode.string
+        , valueDecoder = decoder
+        , argsEncoder =
+            \arg ->
+                Json.Encode.object
+                    [ ( "query", Json.Encode.string arg.query )
+                    , ( "values", Json.Encode.list Json.Encode.string arg.values )
+                    ]
         }
 
 

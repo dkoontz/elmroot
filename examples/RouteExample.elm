@@ -51,8 +51,8 @@ decodeCreateUser =
         (Decode.field "email" Decode.string)
 
 
-getUserHandler : ElmRoot.Request { id : Int } () -> TaskPort.Task (ElmRoot.Response GetUserResponse)
-getUserHandler request =
+getUserHandler : AppModel -> ElmRoot.Request { id : Int } () -> TaskPort.Task (ElmRoot.Response GetUserResponse)
+getUserHandler _ request =
     let
         userId =
             request.params.id
@@ -72,8 +72,8 @@ getUserHandler request =
         }
 
 
-getPostHandler : ElmRoot.Request { userId : Int, postId : Int } () -> TaskPort.Task (ElmRoot.Response String)
-getPostHandler request =
+getPostHandler : AppModel -> ElmRoot.Request { userId : Int, postId : Int } () -> TaskPort.Task (ElmRoot.Response String)
+getPostHandler _ request =
     let
         userIdStr =
             String.fromInt request.params.userId
@@ -89,8 +89,8 @@ getPostHandler request =
         }
 
 
-createUserHandler : ElmRoot.Request () CreateUserRequest -> TaskPort.Task (ElmRoot.Response ())
-createUserHandler request =
+createUserHandler : AppModel -> ElmRoot.Request () CreateUserRequest -> TaskPort.Task (ElmRoot.Response ())
+createUserHandler _ request =
     Task.succeed
         { id = request.id
         , status = 201
@@ -99,7 +99,7 @@ createUserHandler request =
         }
 
 
-getUserRoute : ElmRoot.RouteHandler
+getUserRoute : ElmRoot.RouteHandler AppModel
 getUserRoute =
     ElmRoot.createRoute
         { method = ElmRoot.GET
@@ -113,7 +113,7 @@ getUserRoute =
         }
 
 
-getPostRoute : ElmRoot.RouteHandler
+getPostRoute : ElmRoot.RouteHandler AppModel
 getPostRoute =
     ElmRoot.createRoute
         { method = ElmRoot.GET
@@ -129,7 +129,7 @@ getPostRoute =
         }
 
 
-createUserRoute : ElmRoot.RouteHandler
+createUserRoute : ElmRoot.RouteHandler AppModel
 createUserRoute =
     ElmRoot.createRoute
         { method = ElmRoot.POST
@@ -141,7 +141,11 @@ createUserRoute =
         }
 
 
-exampleApp : ElmRoot.Application
+type alias AppModel =
+    {}
+
+
+exampleApp : ElmRoot.Application () AppModel
 exampleApp =
     { routes = [ getUserRoute, getPostRoute, createUserRoute ]
     , notFoundHandler =
@@ -151,4 +155,5 @@ exampleApp =
             , body = "{\"error\": \"Not Found\"}"
             , headers = []
             }
+    , init = \_ -> {}
     }

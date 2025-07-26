@@ -4,9 +4,11 @@ import pino from "pino";
 import * as TaskPort from "elm-taskport/js/taskport.js";
 import { XMLHttpRequest } from "xmlhttprequest";
 import { Elm } from "./dist/main.mjs";
+import pg from "pg";
 
-const elmFlags = {};
+const elmFlags = { postgrestHost: process.env.PGREST_HOST || "localhost" };
 const taskPortSettings = {};
+const pgConnection = new pg.Client();
 
 // Configure Pino logger
 const logger = pino({
@@ -23,7 +25,13 @@ const logger = pino({
 });
 
 setupErrorHandlers(process);
-setupTaskPort(this);
+
+global.XMLHttpRequest = function () {
+  XMLHttpRequest.call(this);
+  TaskPort.install(taskPortSettings, this);
+};
+
+setupTaskPortHandlers(TaskPort, pgConnection);
 
 // Initialize the Elm application
 const app = Elm.Main.init(elmFlags);
@@ -191,7 +199,12 @@ server = http.createServer((req, res) => {
 
         if (!res.headersSent) {
           res.statusCode = 500;
-          res.end("Internal Server Error");
+          res.end(
+            JSON.stringify({
+              error: `Internal Server Error processing request: ${requestId}`,
+              message: error.message,
+            })
+          );
         }
         pendingResponses.delete(requestId);
       }
@@ -356,15 +369,13 @@ function setupErrorHandlers(process) {
   process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 }
 
-function setupTaskPort(context) {
-  global.XMLHttpRequest = function () {
-    XMLHttpRequest.call(context);
-    TaskPort.install(taskPortSettings, context);
-  };
-
-  TaskPort.register("executeSqlQuery", (query) => {
-    return Promise.resolve(
-      "This is the mock SQL result for the query '" + query + "'"
-    );
+function setupTaskPortHandlers(taskPort, pgConnection) {
+  taskPort.register("executeSqlQuery", (query) => {
+    return Promise.resolve({
+      interpolatedQuery: pgConnection.interpolatedQuery(
+        query.query,
+        query.values
+      ),
+    });
   });
 }

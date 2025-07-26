@@ -4,6 +4,6 @@ import RouteExample
 import ElmRoot
 
 
-main : ElmRoot.HttpServer
+main : ElmRoot.HttpServer () RouteExample.AppModel
 main =
     ElmRoot.createServer RouteExample.exampleApp

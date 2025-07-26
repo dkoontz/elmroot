@@ -22,9 +22,10 @@ Use @docs ElmRoot.createRoute to create individual routes.
         }
 
 -}
-type alias Application =
-    { routes : List RouteHandler
+type alias Application flags model =
+    { routes : List (RouteHandler model)
     , notFoundHandler : NodeHttpRequest -> Response String
+    , init : flags -> model
     }
 
 
@@ -73,17 +74,17 @@ type alias NodeHttpRequest =
     }
 
 
-type RouteHandler
+type RouteHandler appModel
     = RouteHandler
         { method : ElmRoot.Http.HttpMethod
-        , matcher : NodeHttpRequest -> Maybe (Result String (TaskPort.Task (Response String)))
+        , matcher : appModel -> NodeHttpRequest -> Maybe (Result String (TaskPort.Task (Response String)))
         }
 
 
-type alias RouteConfig routeParams requestBody responseBody =
+type alias RouteConfig appModel routeParams requestBody responseBody =
     { method : ElmRoot.Http.HttpMethod
     , route : String -> Maybe (Result String routeParams)
     , requestDecoder : String -> Result String requestBody
     , responseEncoder : responseBody -> String
-    , handler : Request routeParams requestBody -> TaskPort.Task (Response responseBody)
+    , handler : appModel -> Request routeParams requestBody -> TaskPort.Task (Response responseBody)
     }
