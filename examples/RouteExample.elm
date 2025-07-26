@@ -1,9 +1,11 @@
 module RouteExample exposing (..)
 
 import ElmRoot
+import ElmRoot.ErrorHelpers
 import ElmRoot.Http as ElmRoot
 import ElmRoot.RouteParser as RouteParser
 import ElmRoot.Types as ElmRoot
+import Http
 import Json.Decode as Decode
 import Json.Encode as Encode
 import Task
@@ -29,6 +31,12 @@ type alias CreateUserRequest =
     }
 
 
+type Error
+    = TaskPort TaskPort.Error
+    | Http Http.Error
+    | ValidationError String
+
+
 
 -- JSON encoders/decoders
 
@@ -51,55 +59,85 @@ decodeCreateUser =
         (Decode.field "email" Decode.string)
 
 
-getUserHandler : AppModel -> ElmRoot.Request { id : Int } () -> TaskPort.Task (ElmRoot.Response GetUserResponse)
+getUserHandler : AppModel -> ElmRoot.Request { id : Int } () -> Task.Task Error (ElmRoot.Response GetUserResponse)
 getUserHandler _ request =
     let
         userId =
             request.params.id
-
-        user =
-            { id = userId
-            , firstName = "John"
-            , lastName = "Doe"
-            , email = "john.doe@example.com"
-            }
     in
-    Task.succeed
-        { id = request.id
-        , status = 200
-        , body = user
-        , headers = [ ElmRoot.ResponseContentType ElmRoot.ApplicationJson ]
-        }
+    if userId <= 0 then
+        Task.fail (ValidationError "User ID must be positive")
+
+    else
+        let
+            user =
+                { id = userId
+                , firstName = "John"
+                , lastName = "Doe"
+                , email = "john.doe@example.com"
+                }
+        in
+        Task.succeed
+            { id = request.id
+            , status = 200
+            , body = user
+            , headers = [ ElmRoot.ResponseContentType ElmRoot.ApplicationJson ]
+            }
 
 
-getPostHandler : AppModel -> ElmRoot.Request { userId : Int, postId : Int } () -> TaskPort.Task (ElmRoot.Response String)
+getPostHandler : AppModel -> ElmRoot.Request { userId : Int, postId : Int } () -> Task.Task Error (ElmRoot.Response String)
 getPostHandler _ request =
     let
-        userIdStr =
-            String.fromInt request.params.userId
+        userId =
+            request.params.userId
 
-        postIdStr =
-            String.fromInt request.params.postId
+        postId =
+            request.params.postId
     in
-    Task.succeed
-        { id = request.id
-        , status = 200
-        , body = "User " ++ userIdStr ++ " - Post " ++ postIdStr
-        , headers = [ ElmRoot.ResponseContentType ElmRoot.TextPlain ]
-        }
+    if userId <= 0 || postId <= 0 then
+        Task.fail (ValidationError "User ID and Post ID must be positive")
+
+    else
+        let
+            userIdStr =
+                String.fromInt userId
+
+            postIdStr =
+                String.fromInt postId
+        in
+        Task.succeed
+            { id = request.id
+            , status = 200
+            , body = "User " ++ userIdStr ++ " - Post " ++ postIdStr
+            , headers = [ ElmRoot.ResponseContentType ElmRoot.TextPlain ]
+            }
 
 
-createUserHandler : AppModel -> ElmRoot.Request () CreateUserRequest -> TaskPort.Task (ElmRoot.Response ())
+createUserHandler : AppModel -> ElmRoot.Request () CreateUserRequest -> Task.Task Error (ElmRoot.Response ())
 createUserHandler _ request =
-    Task.succeed
-        { id = request.id
-        , status = 201
-        , body = ()
-        , headers = []
-        }
+    let
+        userData =
+            request.body
+    in
+    if String.isEmpty userData.email then
+        Task.fail (ValidationError "Email is required")
+
+    else if String.isEmpty userData.firstName then
+        Task.fail (ValidationError "First name is required")
+
+    else if String.isEmpty userData.lastName then
+        Task.fail (ValidationError "Last name is required")
+
+    else
+        Task.succeed
+            { id = request.id
+            , status = 201
+            , body = ()
+            , headers = []
+            }
 
 
-getUserRoute : ElmRoot.RouteHandler AppModel
+getUserRoute : ElmRoot.RouteHandler AppModel Error
 getUserRoute =
     ElmRoot.createRoute
         { method = ElmRoot.GET
@@ -113,7 +151,7 @@ getUserRoute =
         }
 
 
-getPostRoute : ElmRoot.RouteHandler AppModel
+getPostRoute : ElmRoot.RouteHandler AppModel Error
 getPostRoute =
     ElmRoot.createRoute
         { method = ElmRoot.GET
@@ -129,7 +167,7 @@ getPostRoute =
         }
 
 
-createUserRoute : ElmRoot.RouteHandler AppModel
+createUserRoute : ElmRoot.RouteHandler AppModel Error
 createUserRoute =
     ElmRoot.createRoute
         { method = ElmRoot.POST
@@ -145,7 +183,24 @@ type alias AppModel =
     {}
 
 
-exampleApp : ElmRoot.Application () AppModel
+handleError : ElmRoot.RequestId -> Error -> ElmRoot.Response String
+handleError requestId error =
+    case error of
+        TaskPort taskPortError ->
+            ElmRoot.ErrorHelpers.taskPortErrorToResponse requestId taskPortError
+
+        Http httpError ->
+            ElmRoot.ErrorHelpers.httpErrorToResponse requestId httpError
+
+        ValidationError message ->
+            { id = requestId
+            , status = 422
+            , body = "{\"error\": \"Validation Failed\", \"message\": \"" ++ message ++ "\"}"
+            , headers = []
+            }
+
+
+exampleApp : ElmRoot.Application () AppModel Error
 exampleApp =
     { routes = [ getUserRoute, getPostRoute, createUserRoute ]
     , notFoundHandler =
@@ -155,5 +210,6 @@ exampleApp =
             , body = "{\"error\": \"Not Found\"}"
             , headers = []
             }
+    , errorHandler = handleError
     , init = \_ -> {}
     }

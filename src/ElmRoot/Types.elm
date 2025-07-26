@@ -1,15 +1,16 @@
 module ElmRoot.Types exposing (Application, NodeHttpRequest, Request, RequestId, Response, RouteConfig, RouteHandler(..), requestIdFromString, requestIdToString)
 
 import ElmRoot.Http
-import TaskPort
+import Task
 import Url
 
 
-{-| Given a set of routes and a not-found handler, this type represents the HTTP server application.
+{-| Given a set of routes and functions for initializing a shared server state,
+hadling errors and the not found route, this type represents the HTTP server application.
 Use @docs ElmRoot.createServer to create an instance of this type.
 Use @docs ElmRoot.createRoute to create individual routes.
 
-    exampleApp : ElmRoot.Types.Application
+    exampleApp : ElmRoot.Types.Application () AppModel Error
     exampleApp =
         { routes = [ getUserRoute, createUserRoute ]
         , notFoundHandler =
@@ -19,12 +20,15 @@ Use @docs ElmRoot.createRoute to create individual routes.
                 , body = "{\"error\": \"Not Found\"}"
                 , headers = []
                 }
+        , errorHandler = handleError
+        , init = \_ -> {}
         }
 
 -}
-type alias Application flags model =
-    { routes : List (RouteHandler model)
+type alias Application flags model appError =
+    { routes : List (RouteHandler model appError)
     , notFoundHandler : NodeHttpRequest -> Response String
+    , errorHandler : RequestId -> appError -> Response String
     , init : flags -> model
     }
 
@@ -74,17 +78,17 @@ type alias NodeHttpRequest =
     }
 
 
-type RouteHandler appModel
+type RouteHandler appModel appError
     = RouteHandler
         { method : ElmRoot.Http.HttpMethod
-        , matcher : appModel -> NodeHttpRequest -> Maybe (Result String (TaskPort.Task (Response String)))
+        , matcher : appModel -> NodeHttpRequest -> Maybe (Result String (Task.Task appError (Response String)))
         }
 
 
-type alias RouteConfig appModel routeParams requestBody responseBody =
+type alias RouteConfig appModel appError routeParams requestBody responseBody =
     { method : ElmRoot.Http.HttpMethod
     , route : String -> Maybe (Result String routeParams)
     , requestDecoder : String -> Result String requestBody
     , responseEncoder : responseBody -> String
-    , handler : appModel -> Request routeParams requestBody -> TaskPort.Task (Response responseBody)
+    , handler : appModel -> Request routeParams requestBody -> Task.Task appError (Response responseBody)
     }

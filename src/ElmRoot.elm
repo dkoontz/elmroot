@@ -1,12 +1,11 @@
 port module ElmRoot exposing (HttpServer, createRoute, createServer, emptyRequestBody, emptyResponseBody, jsonRequestBody, jsonResponseBody, stringResponseBody)
 
 import ElmRoot.Http
-import ElmRoot.Types exposing (RequestId)
+import ElmRoot.Types
 import Json.Decode as Decode
 import Json.Encode as Encode
 import Platform
 import Task
-import TaskPort
 import Url
 
 
@@ -14,7 +13,7 @@ import Url
 -- Exposed Server functionality
 
 
-createServer : ElmRoot.Types.Application flags appModel -> HttpServer flags appModel
+createServer : ElmRoot.Types.Application flags appModel appError -> HttpServer flags appModel appError
 createServer application =
     Platform.worker
         { init = init application
@@ -23,11 +22,11 @@ createServer application =
         }
 
 
-type alias HttpServer flags appModel =
-    Program flags (Model flags appModel) Msg
+type alias HttpServer flags appModel appError =
+    Program flags (Model flags appModel appError) (Msg appError)
 
 
-createRoute : ElmRoot.Types.RouteConfig appModel routeParams requestBody responseBody -> ElmRoot.Types.RouteHandler appModel
+createRoute : ElmRoot.Types.RouteConfig appModel appError routeParams requestBody responseBody -> ElmRoot.Types.RouteHandler appModel appError
 createRoute config =
     let
         processRequest appModel { id, params, requestBody, headers, handler, responseEncoder, url } =
@@ -127,24 +126,24 @@ stringResponseBody =
 -- Elm lifecycle types and functions
 
 
-type alias Model flags appModel =
-    { application : ElmRoot.Types.Application flags appModel
+type alias Model flags appModel appError =
+    { application : ElmRoot.Types.Application flags appModel appError
     , appModel : appModel
     }
 
 
-type Msg
+type Msg appError
     = OnRequest ElmRoot.Types.NodeHttpRequest
     | OnInvalidHttpFormat ElmRoot.Types.RequestId String
-    | RequestResult ElmRoot.Types.RequestId (TaskPort.Result (ElmRoot.Types.Response String))
+    | RequestResult ElmRoot.Types.RequestId (Result appError (ElmRoot.Types.Response String))
 
 
-init : ElmRoot.Types.Application flags appModel -> flags -> ( Model flags appModel, Cmd Msg )
+init : ElmRoot.Types.Application flags appModel appError -> flags -> ( Model flags appModel appError, Cmd (Msg appError) )
 init application flags =
     ( { application = application, appModel = application.init flags }, Cmd.none )
 
 
-update : Msg -> Model flags appModel -> ( Model flags appModel, Cmd Msg )
+update : Msg appError -> Model flags appModel appError -> ( Model flags appModel appError, Cmd (Msg appError) )
 update msg model =
     case msg of
         OnRequest request ->
@@ -157,12 +156,12 @@ update msg model =
                         Nothing ->
                             Task.succeed (model.application.notFoundHandler request)
 
-                task =
+                appTask =
                     appResponse
                         |> Task.attempt (RequestResult request.id)
             in
             ( model
-            , task
+            , appTask
             )
 
         OnInvalidHttpFormat requestId errorMessage ->
@@ -183,22 +182,17 @@ update msg model =
                 Err error ->
                     let
                         errorResponse =
-                            case error of
-                                TaskPort.InteropError err ->
-                                    internalServerErrorResponse requestId "Error while communicating with TaskPort"
-
-                                TaskPort.JSError err ->
-                                    internalServerErrorResponse requestId "Error in JavaScript implementation of TaskPort"
+                            model.application.errorHandler requestId error
                     in
                     ( model
                     , Cmd.batch
-                        [ errorResponse |> nodeHttpResponseEncode |> sendResponse
-                        , logging ("Error processing request: " ++ TaskPort.errorToString error)
+                        [ errorResponse |> responseToNodeHttp |> nodeHttpResponseEncode |> sendResponse
+                        , logging "Error processing request"
                         ]
                     )
 
 
-subscriptions : Model flags appModel -> Sub Msg
+subscriptions : Model flags appModel appError -> Sub (Msg appError)
 subscriptions model =
     httpRequest
         (\value ->
@@ -259,22 +253,7 @@ badRequestResponse requestId errorMessage =
     }
 
 
-internalServerErrorResponse : ElmRoot.Types.RequestId -> String -> ElmRoot.Types.Response String
-internalServerErrorResponse requestId errorMessage =
-    { id = requestId
-    , status = 500
-    , body =
-        Encode.object
-            [ ( "error", Encode.string "Internal Server Error" )
-            , ( "requestId", Encode.string (ElmRoot.Types.requestIdToString requestId) )
-            , ( "message", Encode.string errorMessage )
-            ]
-            |> Encode.encode 0
-    , headers = []
-    }
-
-
-tryRoutes : appModel -> ElmRoot.Types.NodeHttpRequest -> List (ElmRoot.Types.RouteHandler appModel) -> Maybe (TaskPort.Task (ElmRoot.Types.Response String))
+tryRoutes : appModel -> ElmRoot.Types.NodeHttpRequest -> List (ElmRoot.Types.RouteHandler appModel appError) -> Maybe (Task.Task appError (ElmRoot.Types.Response String))
 tryRoutes appModel request routes =
     case routes of
         [] ->
